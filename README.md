@@ -280,7 +280,7 @@ const player = {
   yke: 0,
   mass: 64,
   speed: 3,
-  gconst: 9.8
+  gfldstr: 9.8
 }
 ```
 Whith the players coordinates and size we can easily draw it in the draw() function:
@@ -311,10 +311,279 @@ function draw() {
 
 }
 ```
-You should now have a red square appear wherever you placed your "&", Your a Mamma.
+You should now have a red square appear wherever you placed your "&". The easy part of this tutorial is now complete. This is also a good time to talk about how we are going to make the player move. Well were going to be changing the coordinates of the player and then drawing it again in it's new coordinates, however to do this were going to have to use something that runs the entire code on a loop. The easiest way to do that is run the function main() on a loop by using ```requestAnimationFrame(main);``` basicly this will run main() every frame that the game is running. However, this creates a problem whenever the player is redrawn the old image is still there.  To fix this, at the start of the draw() function we just need to put ```c.clearRect(0, 0, canvas.width, canvas.height);``` this wipes everything off the screen before we draw it back just after, this is a little inefficient as the whole level is redrawn every frame. To make this better we **could** just clear the players previous coordinates, but this creates a whole new set of problems that I'm not going to deal with in this tutorial. Just take my word for it, this way is better.
 
 ---
 
-##
+## Gravity
+
+This is going to be the hardest part of the tutorial but keep whith it and you'll've made your own game.
+To create gravity we have to create a new function ```calcGPE(obj)``` (it isn't important that you know the physics involved, however a deeper understanding of the physics used here could be helpfull for knowing what I'm doing.) In this function we need to find the vertical kinetic energy (YKE) , to do this we need to find the gravitational potential energy (GPE); the formula for GPE is GPE = GMH (Gravitational Feild Strength (obj.gfldstr/1000000) x Mass (obj.mass) x Height ((512 - obj.height) - (obj.y / 32)). This formula allows us to find the GPE of any object. This means our final function is:
+
+```javascript
+function calcGPE(obj) {
+  return obj.mass * (obj.gfldstr / 1000000) * ((512 - obj.height) - (obj.y / 32));
+}
+```
+The feild strength is divided by 1000000 because normal the height is in metres but in this measurement is in pixels so we need to account for that by dividing the feild strength by 1 million.
+
+To make gravity act upon our player we need to create **another function**, ``` gravity(obj)``` inside this new function we need to do 3 things take the kinetic energy from the y coordinate, take the gpe from the kinetic enrgy, find the gpe:
+
+```javascript
+function gravity(obj) {
+  obj.y -= obj.yke;
+  obj.yke -= obj.gpe;
+  obj.gpe = calcGPE(obj);
+  }
+```
+
+Now, if we add ```gravity(player);``` to the main function our player should fall out of the sky.\
+
+---
+
+## Vertical Collisions
+
+We want our player to **collide** with the blocks and **stop**, to do this we need to check the block bellow our player, check what kind of block it is and then stop the block if neccesary. However, we don't yet have an easy way of checking what a block is, so we create a new function, getTile(x, y):
+
+```javascript
+function getTile(x, y) {
+//checks the block your looking for is inside the level
+  if (x < currentLevel.length * 64 && x > 0 && y < currentLevel[0].length * 32 && y > 0) {
+    return currentLevel[Math.floor(y / 32)][Math.floor(x / 32)];//returns the block
+  }
+}
+```
+Now we have that, we can easily check the block at whatever coordinates we want.\
+
+To check the block under us is one we want solid, we just need a simple if statement:
+
+```javascript
+if (getTile(obj.x + 32, (obj.y + 32)) === "1" || getTile(obj.x, (obj.y + 32)) === "1") {
+
+}
+```
+To stop the player we need to set it's yke to 0 and round its y coordinate to the nearest 32:
+
+```javascript
+if (getTile(obj.x + 32, (obj.y + 32)) === "1" || getTile(obj.x, (obj.y + 32)) === "1") {
+   if (obj.yke <= 0) {
+      obj.yke = 0;
+      obj.y -= (obj.y % 32);
+   }
+}
+```
+The if statement just allows the player to leave the block again when we move up.
+
+Now put this into the gravity function, make sure it's under everything allready in there.\
+We can use this function again for the other blocks (apart from "v" because it allows us to move through it when coming from above.):
+
+```javascript
+function gravity(obj) {
+...
+...
+// has the "^" included because we want it to do exactly the same thing for that block
+if (getTile(obj.x + 32, (obj.y + 32)) === "1" || getTile(obj.x, (obj.y + 32)) === "1" || getTile(obj.x + 32, (obj.y + 32)) === "^" || getTile(obj.x, (obj.y + 32)) === "^") {
+    if (obj.yke <= 0) {
+      obj.yke = 0;
+      obj.y -= (obj.y % 32);
+    }
+  }
+  else if (getTile(obj.x + 32, obj.y + 32) === "P" || getTile(obj.x, obj.y + 32) === "P") {
+    obj.yke = 0;
+    obj.y -= (obj.y % 32);
+    // no if statement because we don't want the player to leave this block vertically (change gravity)
+  }
+  else if (getTile(obj.x + 32, obj.y + 32) === "b" || getTile(obj.x, obj.y + 32) === "b") {
+    if (obj.yke <= 0) {
+      obj.yke = 0;
+      obj.y -= (obj.y % 32);
+    }
+    obj.gfldstr *= -1 // changes gravity
+  }
+}
+```
+But of course being able to change gravity means that we need the blocks to be solid when we move upwards as well
+This is easy to implement we just need to change the y coordinates that we check from y + 32 to just y. We also need to slow down the player before it meets the block to prevent it clipping in, as the previous rounnding of the coordinates does not work in this situation.
+This means we need to add another 3 if statements:
+
+```javascript
+function gravity(obj) {
+...
+...
+...
+...
+else if (getTile(obj.x, obj.y) === "1" || getTile(obj.x + 32, obj.y) === "1" || getTile(obj.x, obj.y) === "v" || getTile(obj.x + 32, obj.y) === "v") {
+    if (obj.yke > 0) {
+      obj.y += obj.yke;// slows down the player
+      obj.yke = 0;
+    }
+  } 
+  else if (getTile(obj.x, obj.y) === "P" || getTile(obj.x + 32, obj.y) === "P") {
+    obj.yke = 0; // only has this bit because we don't mind if the player sinks into the block because it is meant to be goo anyway
+  }
+  else if (getTile(obj.x, obj.y) === "b" || getTile(obj.x + 32, obj.y) === "b") {
+    if (obj.yke > 0) {
+      obj.y += obj.yke;
+      obj.yke = 0;
+    }
+    obj.gfldstr *= -1
+  }
+}
+```
+Whith all of that in place your entire script.js file should look something like this:
+```javascript
+const c = document.getElementById("canvas").getContext("2d");
+
+let currentLevel;
+
+const player = {
+  x: 0,
+  y: 0,
+  width: 32,
+  height: 32,
+  gpe: 0,
+  yke: 0,
+  mass: 64,
+  speed: 3,
+  gfldstr: 9.8
+}
+
+const level = `1111111111111111
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000PP^^bbvv0000
+0000000000000000
+0000000000000000
+0&00000000000000
+1111111111111111`;
+
+function main() {
+  draw();
+  gravity(player);
+  requestAnimationFrame(main);
+}
+
+function draw() {
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  c.fillStyle = "red"
+  c.fillRect(player.x, player.y, player.width, player.height)
+  for (let row = 0; row < currentLevel.length; row++) {
+    for (let col = 0; col < currentLevel[0].length; col++) {
+
+      if (currentLevel[row][col] === "1") {
+        c.fillStyle = "black";
+        c.fillRect(col * 32, row * 32, 32, 32);
+      }
+
+      if (currentLevel[row][col] === "v") {
+        c.fillStyle = "grey"
+        c.fillRect(col * 32, (row * 32) + 16, 32, 16);
+      }
+
+      if (currentLevel[row][col] === "^") {
+        c.fillStyle = "grey"
+        c.fillRect(col * 32, row * 32, 32, 16);
+      }
+
+      if (currentLevel[row][col] === "P") {
+        c.fillStyle = "pink"
+        c.fillRect(col * 32, row * 32, 32, 32);
+      }
+
+      if (currentLevel[row][col] === "b") {
+        c.fillStyle = "blue"
+        c.fillRect(col * 32, row * 32, 32, 32);
+      }
+
+      if (currentLevel[row][col] === "&") {
+        player.x = col * 32
+        player.y = row * 32
+        currentLevel[row][col] = "0"
+      }
+    }
+  }
+}
+
+function parseLevel(lvl) {
+  const toRows = lvl.split("\n");
+  const toColumns = toRows.map(r => r.split(""));
+  return toColumns;
+}
 
 
+function gravity(obj) {
+  obj.y -= obj.yke;
+  obj.yke -= obj.gpe;
+  obj.gpe = calcGPE(obj);
+
+  if (getTile(obj.x, obj.y) === "1" || getTile(obj.x + 32, obj.y) === "1" || getTile(obj.x, obj.y) === "v" || getTile(obj.x + 32, obj.y) === "v") {
+    if (obj.yke > 0) {
+      obj.y += obj.yke;
+      obj.yke = 0;
+    }
+  } else if (getTile(obj.x + 32, (obj.y + 32)) === "1" || getTile(obj.x, (obj.y + 32)) === "1" || getTile(obj.x + 32, (obj.y + 32)) === "^" || getTile(obj.x, (obj.y + 32)) === "^") {
+    if (obj.yke <= 0) {
+      obj.yke = 0;
+      obj.y -= (obj.y % 32);
+    }
+  }
+  else if (getTile(obj.x + 32, obj.y + 32) === "P" || getTile(obj.x, obj.y + 32) === "P") {
+    obj.yke = 0;
+    obj.y -= (obj.y % 32);
+  }
+  else if (getTile(obj.x + 32, obj.y + 32) === "b" || getTile(obj.x, obj.y + 32) === "b") {
+    if (obj.yke <= 0) {
+      obj.yke = 0;
+      obj.y -= (obj.y % 32);
+    }
+    obj.gfldstr *= -1
+  }
+  if (getTile(obj.x, obj.y) === "P" || getTile(obj.x + 32, obj.y) === "P") {
+    obj.yke = 0;
+  }
+  if (getTile(obj.x, obj.y) === "b" || getTile(obj.x + 32, obj.y) === "b") {
+    if (obj.yke > 0) {
+      obj.y += obj.yke;
+      obj.yke = 0;
+    }
+    obj.gfldstr *= -1
+  }
+}
+
+function calcGPE(obj) {
+  return obj.mass * (obj.gfldstr / 1000000) * ((512 - obj.height) - (obj.y / 32));
+}
+
+function getTile(x, y) {
+  if (x < currentLevel.length * 64 && x > 0 && y < currentLevel[0].length * 32 && y > 0) {
+    return currentLevel[Math.floor(y / 32)][Math.floor(x / 32)];
+  }
+}
+
+window.onload = function () {
+  currentLevel = parseLevel(level);
+  main();
+}
+```
+## Getting Some exercise
+
+Now we ahve a solid world, it's about time we moved through it. To do this we need to addEventListeners:
+
+```javascript
+addEventListener("keydown", function (event) {
+  keysDown[event.keyCode] = true;
+});
+
+addEventListener("keyup", function (event) {
+  delete keysDown[event.keyCode];
+});
+```
+If you're not sure about how to use event listeners go Here:https://www.w3schools.com/js/js_htmldom_eventlistener.asp
